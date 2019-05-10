@@ -1,1 +1,1 @@
-# bcdl
+# bandcamp-dl
