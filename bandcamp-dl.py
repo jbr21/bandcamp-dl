@@ -2,7 +2,7 @@ import argparse as ap
 import requests
 import re
 import urllib.request
-import shutil
+from shutil import copyfileobj
 from bs4 import BeautifulSoup
 import json
 
@@ -18,7 +18,7 @@ def main():
     parser.add_argument('url', action="store", help="Given URL to Bandcamp track")
     args = parser.parse_args()
 
-    soup = BeautifulSoup(requests.get(args.url, headers=request_header), "html.parser")
+    soup = BeautifulSoup(requests.get(args.url, headers=request_header).text, "html.parser")
 
     script = soup.find('script', text=re.compile('TralbumData'))
     album_data = re.sub(r"([ ]+[\/]{2}.*\n)", '', re.search(album_data_regex, script.string, flags=re.DOTALL | re.MULTILINE).group(1))
@@ -30,7 +30,7 @@ def main():
     
     song_url = re.findall(song_url_regex, album_data)[0]
     with urllib.request.urlopen(song_url) as r, open("out.mp3", "wb") as f:
-        shutil.copyfileobj(r, f)
+        copyfileobj(r, f)
 
 if __name__ == "__main__":
     main()
