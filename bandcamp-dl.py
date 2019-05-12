@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 import json
 import mutagen
 from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE2, TALB, TRCK
+import os
 
 request_header = {
     'User-Agent': "Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/12.0"
@@ -19,6 +20,14 @@ track_info_regex = r"trackinfo: (\[\{.*\}\]),"
 def download_track(url, out="out.mp3"):
     with urllib.request.urlopen(url) as r, open(out, "wb") as f:
         shutil.copyfileobj(r, f)
+
+def check_dir(file_path):
+    directory = os.path.dirname(file_path)
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+        print("Created {}\\".format(directory))
+    else:
+        return
 
 def get_track_info(album_data):
     track_raw = json.loads(re.search(track_info_regex, album_data, flags=re.DOTALL | re.MULTILINE).group(1))
@@ -54,13 +63,15 @@ def main():
         sys.exit(1)
     
     soup = BeautifulSoup(r.text, "html.parser")
-
     script = soup.find('script', text=re.compile('TralbumData'))
     album_data = re.search(album_data_regex, script.string, flags=re.DOTALL | re.MULTILINE).group(1)
     track_info = get_track_info(album_data)
-    file_path = ".\\test\\{}\\{}.mp3".format(track_info['album'], re.sub(r'[<>!?:"\\\/|*]', '', track_info['title']))
+    file_path = ".\\out\\{}\\{}.mp3".format(track_info['album'], re.sub(r'[<>!?:"\\\/|*]', '', track_info['title']))
 
+    check_dir(file_path)
+    print("Downloading {}. {}".format(track_info['track-num'], track_info['title']))
     download_track(track_info['mp3-url'], file_path)
+    print("Finished downloading {}. {}".format(track_info['track-num'], track_info['title']))
     set_tags(file_path, track_info)
 
     # Dumping the HTML page into "output.html" for inspection
