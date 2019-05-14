@@ -79,6 +79,9 @@ def main():
     if is_album_page:
         print("{} by {}".format(current['title'], albuminfo['album_artist']))
     for i in range(len(trackinfo_raw)):
+        if trackinfo_raw[i]['file'] is None:
+            print("Track {}, \"{}\", has no mp3-128".format(trackinfo_raw[i]['track_num'], trackinfo_raw[i]['title']))
+            continue
         trackinfo = {
             "track_title": trackinfo_raw[i]['title'],
             "track_artist": re_s(r'TralbumData = {.*?artist: \"(.*?)\",', js_raw, 1) if not is_album_page else None,
