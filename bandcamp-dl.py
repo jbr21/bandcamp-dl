@@ -73,7 +73,7 @@ def main():
     is_album_page = True if current['type'] == "album" else False
     albuminfo = {
         "album_title": current['title'] if is_album_page else re_s(r'var EmbedData = \{.*?album_title\s?: \"(.*?)\"', js_raw, 1) if has_album else None,
-        "album_artist": current['artist'] if is_album_page else soup.find("span", { "itemprop": "byArtist" }).findChildren("a")[0].text
+        "album_artist": soup.find("span", { "itemprop": "byArtist" }).findChildren("a")[0].text
     }
 
     if is_album_page:
