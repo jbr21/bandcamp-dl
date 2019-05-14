@@ -82,8 +82,8 @@ def main():
         trackinfo = {
             "track_title": trackinfo_raw[i]['title'],
             "track_artist": re_s(r'TralbumData = {.*?artist: \"(.*?)\",', js_raw, 1) if not is_album_page else None,
-            "track_num": trackinfo_raw[i]['track_num'],
-            "mp3_url": str(trackinfo_raw[i]['file']['mp3-128']),
+            "track_num": str(trackinfo_raw[i]['track_num']),
+            "mp3_url": trackinfo_raw[i]['file']['mp3-128'],
             "has_album": has_album
         }
         print("({} of {}) Downloading {}".format(i + 1, len(trackinfo_raw), trackinfo['track_title']))
