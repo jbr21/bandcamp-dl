@@ -1,105 +1,94 @@
 import argparse as ap
 import requests
 import re
-import urllib.request
 import sys
-import shutil
-from bs4 import BeautifulSoup
-import json
-import mutagen
-from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE2, TALB, TRCK
 import os
+import json
+import urllib.request
+import shutil
+from mutagen.id3 import ID3, ID3NoHeaderError, TIT2, TPE2, TALB, TRCK
+from bs4 import BeautifulSoup
 
 request_header = {
     'User-Agent': "Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/12.0"
 }
 
-url_regex = r"^(https:\/\/)?([a-zA-Z0-9]*?).bandcamp.com(\/album\/|\/track\/)[a-zA-Z0-9\-]+$"
-album_data_regex = r"TralbumData = (\{(\s*?.*?)*?\});$"
-track_info_regex = r"trackinfo: (\[\{.*\}\]),"
-current_regex = r"current: (\{.*?\}),"
+url_regex = r'^(https:\/\/)?([a-zA-Z0-9]*?).bandcamp.com(\/album\/|\/track\/)[a-zA-Z0-9\-]+$'
 
-def download_track(url, out=".\\out\\out.mp3"):
-    with urllib.request.urlopen(url) as r, open(out, "wb") as f:
-        shutil.copyfileobj(r, f)
+def re_s(p: str, s: str, g = 0):
+    return re.search(p, s, flags= re.S | re.M).group(g)
 
-def check_dir(file_path):
-    directory = os.path.dirname(file_path)
+def clean_filename(name):
+    return re.sub(r'[<>?:"\\\/|*]', '', name)
+
+def check_dir(filepath):
+    directory = os.path.dirname(filepath)
     if not os.path.exists(directory):
         os.makedirs(directory)
         print("Created {}\\".format(directory))
+
+def download_track(trackinfo, albuminfo):
+    if albuminfo['album_title'] is not None:
+        filepath = ".\\out\\{}\\{}.mp3".format(clean_filename(albuminfo['album_title']), clean_filename(trackinfo['track_title']))
     else:
-        return
+        filepath = ".\\out\\{}.mp3".format(clean_filename(trackinfo['track_title']))
+    check_dir(filepath)
+    with urllib.request.urlopen(trackinfo['mp3_url']) as r, open(filepath, "wb") as f:
+        shutil.copyfileobj(r, f)
+    set_tags(filepath, trackinfo, albuminfo)
 
-def get_album_info(album_raw, is_album):
-    if is_album is True:
-        current_raw = json.loads(re.search(current_regex, album_raw, flags=re.DOTALL | re.MULTILINE).group(1))
-        album_info = {
-            "album": current_raw['title'],
-            "album-artist": current_raw['artist']
-        }
-    else:
-        album_info = {
-            "album": str(re.search(r'album_url: "\/album\/(.*)",', album_raw).group(1)),
-            "album-artist": str(re.search(r'artist: "(.*)",', album_raw).group(1))
-        }
-    return album_info
-
-def get_track_info(album_raw, i=0):
-    track_raw = json.loads(re.search(track_info_regex, album_raw, flags=re.DOTALL | re.MULTILINE).group(1))
-    track_info = {
-        "title": track_raw[i]['title'],
-        "track-num": str(track_raw[i]['track_num']),
-        "mp3-url": track_raw[i]['file']['mp3-128']
-    }
-    return track_info
-
-def set_tags(file, track_info, album_info):
+def set_tags(filepath, trackinfo, albuminfo):
     try:
-        audio = ID3(file)
+        audio = ID3(filepath)
     except ID3NoHeaderError:
         audio = ID3()
-    audio.add(TIT2(encoding=3, text=track_info['title']))
-    audio.add(TPE2(encoding=3, text=album_info['album-artist']))
-    audio.add(TALB(encoding=3, text=album_info['album']))
-    audio.add(TRCK(encoding=3, text=track_info['track-num']))
-    audio.save(file)
+    if trackinfo['has_album'] is not False:
+        audio.add(TALB(encoding=3, text=albuminfo['album_title']))
+        audio.add(TRCK(encoding=3, text=trackinfo['track_num']))
+    audio.add(TIT2(encoding=3, text=trackinfo['track_title']))
+    audio.add(TPE2(encoding=3, text=albuminfo['album_artist']))
+    audio.save(filepath)
 
 def main():
     parser = ap.ArgumentParser(description="Download music from Bandcamp at 128kbps")
     parser.add_argument('url', action="store", help="Given URL to Bandcamp track")
     args = parser.parse_args()
 
-    if re.match(url_regex, args.url):
-        try:
-            r = requests.get(args.url, headers=request_header)
-        except requests.exceptions.RequestException as e:
-            print(e)
-            sys.exit(1)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-        script = soup.find('script', text=re.compile('TralbumData'))
-        album_raw = re.search(album_data_regex, script.string, flags=re.DOTALL | re.MULTILINE).group(1)
-        track_raw = json.loads(re.search(track_info_regex, album_raw, flags=re.DOTALL | re.MULTILINE).group(1))
-        if "/album/" in args.url:
-            album_info = get_album_info(album_raw, True)
-        else:
-            album_info = get_album_info(album_raw, False)
-        album_dir_name = re.sub(r'[<>!?:"\\\/|*]', '', album_info['album'])
-        
-        check_dir(".\\out\\{}\\".format(album_dir_name))
-        for track in range(len(track_raw)):
-            track_info = get_track_info(album_raw, track)
-            file_path = ".\\out\\{}\\{}.mp3".format(album_dir_name, re.sub(r'[<>!?:"\\\/|*]', '', track_info['title']))
-            
-            print("({} of {}) Downloading {}. {}".format(track + 1, len(track_raw), track_info['track-num'], track_info['title']))
-            download_track(track_info['mp3-url'], file_path)
-            print("Finished downloading {}. {}".format(track_info['track-num'], track_info['title']))
-            set_tags(file_path, track_info, album_info)
-
-    else:
-        print("{} is not a valid track or album URL".format(args.url))
+    if not re.match(url_regex, args.url):
+        print("Invalid Bandcamp URL.")
+        sys.exit(0)
+    
+    try:
+        r = requests.get(args.url, headers=request_header)
+    except requests.exceptions.RequestException as e:
+        print(e)
         sys.exit(1)
+
+    soup = BeautifulSoup(r.text, "html.parser")
+    js_raw = soup.find('script', text=re.compile('var TralbumData =')).string
+    current = json.loads(re_s(r'current: (\{.*?\}),', js_raw, 1))
+    trackinfo_raw = json.loads(re_s(r'trackinfo: (\[\{.*\}\]),', js_raw, 1))
+    band_name = re_s(r'var BandData = \{.*?name: \"(.*?)\",$', js_raw, 1)
+    has_album = True if re_s(r'var EmbedData = {.*?\{ name\s?: \"(album|track)\"', js_raw, 1) == "album" else False
+    is_album_page = True if current['type'] == "album" else False
+    albuminfo = {
+        "album_title": current['title'] if is_album_page else re_s(r'var EmbedData = \{.*?album_title\s?: \"(.*?)\"', js_raw, 1) if has_album else None,
+        "album_artist": current['artist'] if is_album_page else soup.find("span", { "itemprop": "byArtist" }).findChildren("a")[0].text
+    }
+
+    if is_album_page:
+        print("{} by {}".format(current['title'], albuminfo['album_artist']))
+    for i in range(len(trackinfo_raw)):
+        trackinfo = {
+            "track_title": trackinfo_raw[i]['title'],
+            "track_artist": re_s(r'TralbumData = {.*?artist: \"(.*?)\",', js_raw, 1) if not is_album_page else None,
+            "track_num": trackinfo_raw[i]['track_num'],
+            "mp3_url": str(trackinfo_raw[i]['file']['mp3-128']),
+            "has_album": has_album
+        }
+        print("({} of {}) Downloading {}".format(i + 1, len(trackinfo_raw), trackinfo['track_title']))
+        download_track(trackinfo, albuminfo)
+        print("Finished downloading {}".format(trackinfo['track_title']))
 
 if __name__ == "__main__":
     main()
